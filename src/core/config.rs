@@ -295,7 +295,7 @@ pub fn hook_rewrite_params() -> (Vec<String>, Vec<String>) {
 /// within a single `rtk` invocation (a `rtk` process is short-lived and exits
 /// after one subcommand, so there's no cross-invocation staleness to worry
 /// about) — but NOT used by any path that mutates and saves config within the
-/// same process run (e.g. `hooks::init::save_telemetry_consent`'s load-mutate-save),
+/// same process run (e.g. `telemetry_cmd::record_opt_out`'s load-mutate-save),
 /// since those must always observe a fresh read. Only reach for this from a
 /// caller that never itself writes config.toml.
 ///

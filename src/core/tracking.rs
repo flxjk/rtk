@@ -30,10 +30,12 @@
 //! See [docs/tracking.md](../docs/tracking.md) for full documentation.
 
 use crate::core::db::{self, DbKind, Migration, MigrationMode, Schema, Version};
+#[cfg(test)]
 use crate::core::shell::{quote_program, quote_word};
 use crate::core::user_dirs;
 use crate::core::user_env;
 // The shared shell lexer lives in `discover`.
+#[cfg(test)]
 use crate::discover::lexer::shell_split;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -42,6 +44,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::path::PathBuf;
+#[cfg(test)]
 use std::sync::LazyLock;
 use std::time::Instant;
 
@@ -673,6 +676,7 @@ fn should_sample_cleanup(key: &str, rate: u32) -> bool {
 /// routing rather than something the user typed.
 ///
 /// A tool that gains subcommands belongs here too, or its label stops at the tool name.
+#[cfg(test)]
 const SUBCOMMAND_ROUTERS: &[&str] = &[
     "artisan",
     "aws",
@@ -721,6 +725,7 @@ const SUBCOMMAND_ROUTERS: &[&str] = &[
 /// Lowercase first, so a revision like `HEAD~3..HEAD` is not mistaken for one, but mixed case
 /// after it -- real subcommands are spelled `testOnly` (sbt) and `testOnly` is not the only
 /// one. A `:` is allowed for a Maven-style goal.
+#[cfg(test)]
 static SUBCOMMAND_WORD: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"^[a-z][A-Za-z0-9:_-]*$").unwrap());
 
@@ -735,6 +740,7 @@ static SUBCOMMAND_WORD: LazyLock<regex::Regex> =
 /// own. A third only for a tool that routes by its own subcommand, so `rtk git log` stays
 /// apart from `rtk git status`, and only when that word is shaped like a subcommand. The tool
 /// is taken as a basename, so `./gradlew` and `gradlew` are one label and no path survives.
+#[cfg(test)]
 fn command_label(rtk_cmd: &str) -> String {
     let words = stored_words(rtk_cmd);
     let Some(prefix) = words.first() else {
@@ -754,6 +760,7 @@ fn command_label(rtk_cmd: &str) -> String {
 
 /// The last component of a program word, on either path separator, so neither
 /// `/home/alice/bin/make` nor `C:\Users\Jane Doe\bin\make.exe` leaves a path behind.
+#[cfg(test)]
 fn tool_name(word: &str) -> &str {
     word.rsplit(['/', '\\']).next().unwrap_or(word)
 }
@@ -764,6 +771,7 @@ fn tool_name(word: &str) -> &str {
 /// A row that is not spelled the way [`quote_word`] writes it is split on whitespace
 /// instead, so a stray `'` cannot pull the arguments into the program word and an
 /// unquoted Windows path keeps its `\`.
+#[cfg(test)]
 fn stored_words(cmd: &str) -> Vec<String> {
     // `quote_word` writes no `'` outside its quoting, so a row without one is its
     // whitespace split, and the lexer has nothing to undo.
@@ -779,6 +787,7 @@ fn stored_words(cmd: &str) -> Vec<String> {
 
 /// SQL for a grouping key on `column`: its first word, or the whole value when it
 /// starts with a quote, for [`key_word`] to read with the quotes removed.
+#[cfg(test)]
 fn first_word_key_sql(column: &str) -> String {
     format!(
         "CASE WHEN SUBSTR({column}, 1, 1) IN ('''', '\"') THEN {column}
@@ -787,6 +796,7 @@ fn first_word_key_sql(column: &str) -> String {
 }
 
 /// The word a [`first_word_key_sql`] key stands for.
+#[cfg(test)]
 fn key_word(key: String) -> String {
     if key.starts_with(['\'', '"']) {
         stored_words(&key).into_iter().next().unwrap_or_default()
@@ -798,6 +808,7 @@ fn key_word(key: String) -> String {
 /// Where the program word sits in a stored row: after `rtk:toml` or `rtk:passthrough`,
 /// after `rtk` and an rtk command that runs a program the user named (`fallback:`,
 /// `proxy`, `err`, `test`, `lint`), after `rtk` alone, and first in any other row.
+#[cfg(test)]
 fn program_index(words: &[String]) -> usize {
     match words.first().map(String::as_str) {
         Some("rtk:toml" | "rtk:passthrough") => 1,
@@ -811,6 +822,7 @@ fn program_index(words: &[String]) -> usize {
 
 /// Whether `cmd` is `words` joined by single spaces, each spelled as
 /// [`quote_word`] writes it, or as [`quote_program`] writes the program word.
+#[cfg(test)]
 fn spelled_as_written(words: &[String], cmd: &str) -> bool {
     let program = program_index(words);
     let mut rest = cmd;
@@ -1775,6 +1787,7 @@ impl Tracker {
     }
 
     /// Count commands since a given timestamp (for telemetry).
+    #[cfg(test)]
     pub fn count_commands_since(&self, since: chrono::DateTime<chrono::Utc>) -> Result<i64> {
         let ts = since.format("%Y-%m-%dT%H:%M:%S").to_string();
         let count: i64 = self.conn.query_row(
@@ -1788,6 +1801,7 @@ impl Tracker {
     /// Get top N commands by frequency (for telemetry): the tool of each row, as
     /// `command_label` reads it, so `rtk curl <url>` rows rank together however their
     /// arguments differ.
+    #[cfg(test)]
     pub fn top_commands(&self, limit: usize) -> Result<Vec<String>> {
         let mut stmt = self.conn.prepare(&format!(
             "WITH split AS (
@@ -1814,6 +1828,7 @@ impl Tracker {
     }
 
     /// Get overall savings percentage (for telemetry).
+    #[cfg(test)]
     pub fn overall_savings_pct(&self) -> Result<f64> {
         let (total_input, total_saved): (i64, i64) = self.conn.query_row(
             "SELECT COALESCE(SUM(input_tokens), 0), COALESCE(SUM(saved_tokens), 0) FROM commands",
@@ -1828,6 +1843,7 @@ impl Tracker {
     }
 
     /// Get total tokens saved across all tracked commands (for telemetry).
+    #[cfg(test)]
     pub fn total_tokens_saved(&self) -> Result<i64> {
         let saved: i64 = self.conn.query_row(
             "SELECT COALESCE(SUM(saved_tokens), 0) FROM commands",
@@ -1838,6 +1854,7 @@ impl Tracker {
     }
 
     /// Get tokens saved in the last 24 hours (for telemetry).
+    #[cfg(test)]
     pub fn tokens_saved_24h(&self, since: chrono::DateTime<chrono::Utc>) -> Result<i64> {
         let ts = since.format("%Y-%m-%dT%H:%M:%S").to_string();
         let saved: i64 = self.conn.query_row(
@@ -1851,6 +1868,7 @@ impl Tracker {
     /// Top N passthrough commands (0% savings) — commands missing a filter.
     /// Groups by the program's file name only, to avoid leaking arguments or a
     /// path into telemetry.
+    #[cfg(test)]
     pub fn top_passthrough(&self, limit: usize) -> Result<Vec<(String, i64)>> {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {} AS program, COUNT(*) AS cnt FROM commands
@@ -1876,6 +1894,7 @@ impl Tracker {
     }
 
     /// Count parse failures in the last 24 hours.
+    #[cfg(test)]
     pub fn parse_failures_since(&self, since: chrono::DateTime<chrono::Utc>) -> Result<i64> {
         let ts = since.format("%Y-%m-%dT%H:%M:%S").to_string();
         let count: i64 = self.conn.query_row(
@@ -1895,6 +1914,7 @@ impl Tracker {
     /// command (negative rate) is listed: it is the filter most in need of improvement. Exact
     /// 0% is left out, `passthrough_top` already reports it, and a command whose calls never
     /// had any input carries no signal, so it is skipped rather than reported as 0%.
+    #[cfg(test)]
     pub fn low_savings_commands(&self, limit: usize) -> Result<Vec<(String, f64)>> {
         let mut stmt = self.conn.prepare(
             "SELECT rtk_cmd,
@@ -1928,6 +1948,7 @@ impl Tracker {
     /// and the signed per-command `savings_pct` (see `record`). Only the upper end is
     /// bounded (a real saving never exceeds 100%); telemetry consumers assert on that,
     /// not on a `0..=100` floor.
+    #[cfg(test)]
     pub fn avg_savings_per_command(&self) -> Result<f64> {
         let avg: f64 = self.conn.query_row(
             "SELECT COALESCE(AVG(cmd_rate), 0.0) FROM (
@@ -1944,6 +1965,7 @@ impl Tracker {
     }
 
     /// Count invocations of a specific meta-command (by rtk_cmd suffix).
+    #[cfg(test)]
     pub fn count_meta_command(&self, name: &str) -> Result<i64> {
         let pattern = format!("rtk {}", name);
         let count: i64 = self.conn.query_row(
@@ -1971,6 +1993,7 @@ impl Tracker {
     }
 
     /// Number of distinct active days in the last 30 days.
+    #[cfg(test)]
     pub fn active_days_30d(&self) -> Result<i64> {
         let since = (chrono::Utc::now() - chrono::Duration::days(30))
             .format("%Y-%m-%dT%H:%M:%S")
@@ -1984,6 +2007,7 @@ impl Tracker {
     }
 
     /// Total number of recorded commands.
+    #[cfg(test)]
     pub fn commands_total(&self) -> Result<i64> {
         let count: i64 = self
             .conn
@@ -1992,6 +2016,7 @@ impl Tracker {
     }
 
     /// Ecosystem distribution as percentages (top categories by command prefix).
+    #[cfg(test)]
     pub fn ecosystem_mix(&self) -> Result<Vec<(String, f64)>> {
         let total: f64 = self.conn.query_row(
             "SELECT COUNT(*) FROM commands WHERE input_tokens > 0 AND timestamp >= datetime('now', '-90 days')",
@@ -2027,6 +2052,7 @@ impl Tracker {
     }
 
     /// Tokens saved in the last 30 days.
+    #[cfg(test)]
     pub fn tokens_saved_30d(&self) -> Result<i64> {
         let since = (chrono::Utc::now() - chrono::Duration::days(30))
             .format("%Y-%m-%dT%H:%M:%S")
@@ -2040,6 +2066,7 @@ impl Tracker {
     }
 
     /// Number of distinct project paths.
+    #[cfg(test)]
     pub fn projects_count(&self) -> Result<i64> {
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(DISTINCT project_path) FROM commands WHERE project_path != ''",
@@ -2051,6 +2078,7 @@ impl Tracker {
 }
 
 /// Map an rtk_cmd to an ecosystem category for telemetry.
+#[cfg(test)]
 fn categorize_command(rtk_cmd: &str) -> String {
     let words = stored_words(rtk_cmd);
     let tool = words.get(1).map_or("other", |word| tool_name(word));

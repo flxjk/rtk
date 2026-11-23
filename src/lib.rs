@@ -760,7 +760,7 @@ enum Commands {
     /// Show RTK adoption across Claude Code sessions
     Session {},
 
-    /// Manage telemetry consent and data (RGPD/GDPR)
+    /// Inspect telemetry status and manage legacy local data
     Telemetry {
         #[command(subcommand)]
         command: core::telemetry_cmd::TelemetrySubcommand,
@@ -2487,32 +2487,8 @@ fn require_single_script(subcommand: &str, shell: Option<&str>, command: &[Strin
         .exit();
 }
 
-/// Whether this invocation runs the daily telemetry ping. A parsed
-/// `rtk hook …` command does not: the hook processors run before every
-/// command an agent runs. Neither does `rtk telemetry forget`: the send thread
-/// would outlive the command and could write the ping marker back after
-/// `forget` deleted it. Anything clap rejects (help, version, a passthrough
-/// command) still runs it.
-fn pings_telemetry(parsed: &Result<Cli, clap::Error>) -> bool {
-    !matches!(
-        parsed,
-        Ok(Cli {
-            command: Commands::Hook { .. }
-                | Commands::Telemetry {
-                    command: core::telemetry_cmd::TelemetrySubcommand::Forget,
-                },
-            ..
-        })
-    )
-}
-
 fn run_cli() -> Result<i32> {
     let parsed = try_parse_cli_from(std::env::args_os());
-
-    // Fire-and-forget telemetry ping (1/day, non-blocking)
-    if pings_telemetry(&parsed) {
-        core::telemetry::maybe_ping();
-    }
 
     let cli = match parsed {
         Ok(cli) => cli,
@@ -5245,44 +5221,6 @@ mod tests {
                 command: HookCommands::Claude
             }
         ));
-    }
-
-    #[test]
-    fn hook_commands_skip_the_telemetry_ping() {
-        for args in [&["rtk", "hook", "claude"][..], &["rtk", "hook", "codex"]] {
-            assert!(
-                !pings_telemetry(&try_parse_cli_from(args)),
-                "{args:?} must not ping"
-            );
-        }
-    }
-
-    #[test]
-    fn telemetry_forget_skips_the_telemetry_ping() {
-        assert!(
-            !pings_telemetry(&try_parse_cli_from(["rtk", "telemetry", "forget"])),
-            "a ping thread started by `forget` could recreate the marker it deletes"
-        );
-    }
-
-    #[test]
-    fn other_invocations_still_run_the_ping() {
-        for args in [
-            &["rtk", "ls"][..],
-            &["rtk", "gain"],
-            &["rtk", "telemetry", "status"],
-            &["rtk", "--help"],
-            &["rtk", "--version"],
-            // Rejected by clap: an unknown command runs through the fallback,
-            // and a hook with a bad flag never reaches the hook processor.
-            &["rtk", "uname", "-s"],
-            &["rtk", "hook", "claude", "--bogus"],
-        ] {
-            assert!(
-                pings_telemetry(&try_parse_cli_from(args)),
-                "{args:?} must ping"
-            );
-        }
     }
 
     #[test]

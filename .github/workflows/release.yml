@@ -83,9 +83,6 @@ jobs:
 
       - name: Build rtk
         run: cargo build --release --target ${{ matrix.target }}
-        env:
-          RTK_TELEMETRY_URL: ${{ vars.RTK_TELEMETRY_URL }}
-          RTK_TELEMETRY_TOKEN: ${{ secrets.RTK_TELEMETRY_TOKEN }}
 
       - name: Package deb and rpm
         if: matrix.musl
@@ -125,9 +122,6 @@ jobs:
       # installed hook command must keep working across editions.
       - name: Build rtk (Apache-2.0 edition)
         run: cargo build --release --no-default-features --target ${{ matrix.target }}
-        env:
-          RTK_TELEMETRY_URL: ${{ vars.RTK_TELEMETRY_URL }}
-          RTK_TELEMETRY_TOKEN: ${{ secrets.RTK_TELEMETRY_TOKEN }}
 
       - name: Package deb and rpm (Apache-2.0 edition)
         if: matrix.musl

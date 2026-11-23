@@ -743,6 +743,7 @@ pub fn tool_exists(name: &str) -> bool {
 /// assert!(!env_is_some(Some("")));
 /// assert!(!env_is_some(None));
 /// ```
+#[cfg(test)]
 pub fn env_is_some(value: Option<&str>) -> bool {
     value.is_some_and(|v| !v.is_empty())
 }
