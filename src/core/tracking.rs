@@ -1786,18 +1786,6 @@ impl Tracker {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// Count commands since a given timestamp (for telemetry).
-    #[cfg(test)]
-    pub fn count_commands_since(&self, since: chrono::DateTime<chrono::Utc>) -> Result<i64> {
-        let ts = since.format("%Y-%m-%dT%H:%M:%S").to_string();
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM commands WHERE timestamp >= ?1",
-            params![ts],
-            |row| row.get(0),
-        )?;
-        Ok(count)
-    }
-
     /// Get top N commands by frequency (for telemetry): the tool of each row, as
     /// `command_label` reads it, so `rtk curl <url>` rows rank together however their
     /// arguments differ.
@@ -1853,18 +1841,6 @@ impl Tracker {
         Ok(saved)
     }
 
-    /// Get tokens saved in the last 24 hours (for telemetry).
-    #[cfg(test)]
-    pub fn tokens_saved_24h(&self, since: chrono::DateTime<chrono::Utc>) -> Result<i64> {
-        let ts = since.format("%Y-%m-%dT%H:%M:%S").to_string();
-        let saved: i64 = self.conn.query_row(
-            "SELECT COALESCE(SUM(saved_tokens), 0) FROM commands WHERE timestamp >= ?1",
-            params![ts],
-            |row| row.get(0),
-        )?;
-        Ok(saved)
-    }
-
     /// Top N passthrough commands (0% savings) — commands missing a filter.
     /// Groups by the program's file name only, to avoid leaking arguments or a
     /// path into telemetry.
@@ -1891,18 +1867,6 @@ impl Tracker {
         top.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         top.truncate(limit);
         Ok(top)
-    }
-
-    /// Count parse failures in the last 24 hours.
-    #[cfg(test)]
-    pub fn parse_failures_since(&self, since: chrono::DateTime<chrono::Utc>) -> Result<i64> {
-        let ts = since.format("%Y-%m-%dT%H:%M:%S").to_string();
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM parse_failures WHERE timestamp >= ?1",
-            params![ts],
-            |row| row.get(0),
-        )?;
-        Ok(count)
     }
 
     /// Count commands with low savings (<30%) — filters that need improvement.
@@ -1964,18 +1928,6 @@ impl Tracker {
         Ok(avg)
     }
 
-    /// Count invocations of a specific meta-command (by rtk_cmd suffix).
-    #[cfg(test)]
-    pub fn count_meta_command(&self, name: &str) -> Result<i64> {
-        let pattern = format!("rtk {}", name);
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM commands WHERE rtk_cmd LIKE ?1 || '%'",
-            params![pattern],
-            |row| row.get(0),
-        )?;
-        Ok(count)
-    }
-
     /// Days since first recorded command (installation age).
     pub fn first_seen_days(&self) -> Result<i64> {
         let oldest: Option<String> = self
@@ -1992,89 +1944,6 @@ impl Tracker {
         }
     }
 
-    /// Number of distinct active days in the last 30 days.
-    #[cfg(test)]
-    pub fn active_days_30d(&self) -> Result<i64> {
-        let since = (chrono::Utc::now() - chrono::Duration::days(30))
-            .format("%Y-%m-%dT%H:%M:%S")
-            .to_string();
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(DISTINCT DATE(timestamp)) FROM commands WHERE timestamp >= ?1",
-            params![since],
-            |row| row.get(0),
-        )?;
-        Ok(count)
-    }
-
-    /// Total number of recorded commands.
-    #[cfg(test)]
-    pub fn commands_total(&self) -> Result<i64> {
-        let count: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM commands", [], |row| row.get(0))?;
-        Ok(count)
-    }
-
-    /// Ecosystem distribution as percentages (top categories by command prefix).
-    #[cfg(test)]
-    pub fn ecosystem_mix(&self) -> Result<Vec<(String, f64)>> {
-        let total: f64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM commands WHERE input_tokens > 0 AND timestamp >= datetime('now', '-90 days')",
-            [],
-            |row| row.get(0),
-        )?;
-        if total == 0.0 {
-            return Ok(vec![]);
-        }
-        let mut stmt = self.conn.prepare(
-            "SELECT rtk_cmd, COUNT(*) as cnt FROM commands
-             WHERE input_tokens > 0 AND timestamp >= datetime('now', '-90 days')
-             GROUP BY rtk_cmd ORDER BY cnt DESC",
-        )?;
-        let mut categories: std::collections::HashMap<String, f64> =
-            std::collections::HashMap::new();
-        let rows = stmt.query_map([], |row| {
-            let cmd: String = row.get(0)?;
-            let cnt: f64 = row.get(1)?;
-            Ok((cmd, cnt))
-        })?;
-        for row in rows.flatten() {
-            let cat = categorize_command(&row.0);
-            *categories.entry(cat).or_default() += row.1;
-        }
-        let mut result: Vec<(String, f64)> = categories
-            .into_iter()
-            .map(|(cat, cnt)| (cat, (cnt / total * 100.0).round()))
-            .collect();
-        result.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        result.truncate(8);
-        Ok(result)
-    }
-
-    /// Tokens saved in the last 30 days.
-    #[cfg(test)]
-    pub fn tokens_saved_30d(&self) -> Result<i64> {
-        let since = (chrono::Utc::now() - chrono::Duration::days(30))
-            .format("%Y-%m-%dT%H:%M:%S")
-            .to_string();
-        let saved: i64 = self.conn.query_row(
-            "SELECT COALESCE(SUM(saved_tokens), 0) FROM commands WHERE timestamp >= ?1",
-            params![since],
-            |row| row.get(0),
-        )?;
-        Ok(saved)
-    }
-
-    /// Number of distinct project paths.
-    #[cfg(test)]
-    pub fn projects_count(&self) -> Result<i64> {
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(DISTINCT project_path) FROM commands WHERE project_path != ''",
-            [],
-            |row| row.get(0),
-        )?;
-        Ok(count)
-    }
 }
 
 /// Map an rtk_cmd to an ecosystem category for telemetry.
